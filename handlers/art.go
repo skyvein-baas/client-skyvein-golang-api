@@ -1277,7 +1277,7 @@ func (b *Art) TransferTo(who string, amount uint64) (ok bool, err error) {
 	// if err != nil {
 	// 	return
 	// }
-	api, eventApi := a.Api, a.EventApi
+	api, eventApi := b.Api, b.EventApi
 	meta, err := api.RPC.State.GetMetadataLatest()
 	if err != nil {
 		return
@@ -1419,5 +1419,19 @@ forEnd:
 		return
 	}
 	ok = true
+	return
+}
+
+func (ap *ArtPool) TransferTo(who string, amount uint64) (ok bool, err error) {
+	var a *Art
+	a, err = ap.Get()
+	if err != nil {
+		return
+	}
+	ok, err = a.TransferTo(who, amount)
+	if err != nil {
+		return
+	}
+	ap.PutBack(a)
 	return
 }
