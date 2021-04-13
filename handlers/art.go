@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	gsrpc "github.com/centrifuge/go-substrate-rpc-client/v2"
 	"github.com/centrifuge/go-substrate-rpc-client/v2/signature"
@@ -12,9 +13,145 @@ import (
 	"github.com/skyvein-baas/client-skyvein-golang-api/models"
 )
 
+type ArtPool struct {
+	Lock      *sync.RWMutex
+	Cfg       models.Client
+	IsFeeless bool
+
+	Pool    []Art
+	MaxConn int
+}
+
+func (a *ArtPool) Feeless() *ArtPool {
+	a.IsFeeless = true
+	return a
+}
+
+func NewArtPool(cli models.Client) *ArtPool {
+	return &ArtPool{
+		Lock:    new(sync.RWMutex),
+		Cfg:     cli,
+		MaxConn: 20,
+	}
+}
+
+func (ap *ArtPool) Get() (a *Art, err error) {
+	defer ap.Lock.Unlock()
+	ap.Lock.Lock()
+
+	if len(ap.Pool) == 0 {
+		a, err = NewArt(ap.Cfg)
+		if err != nil {
+			return
+		}
+		if ap.IsFeeless {
+			a.Feeless()
+		}
+		return
+	}
+	a = &ap.Pool[0]
+	ap.Pool = ap.Pool[1:]
+	return
+}
+
+func (ap *ArtPool) PutBack(a *Art) {
+	defer ap.Lock.Unlock()
+	ap.Lock.Lock()
+
+	ap.Pool = append(ap.Pool, *a)
+	return
+}
+
+func (ap *ArtPool) RegisterArt(req models.RegisterArtReq) (out *models.RegisterArtRst, err error) {
+	var a *Art
+	a, err = ap.Get()
+	if err != nil {
+		return
+	}
+	out, err = a.RegisterArt(req)
+	if err != nil {
+		return
+	}
+	ap.PutBack(a)
+	return
+}
+
+func (ap *ArtPool) ApproveForAll(req models.ApproveForAllReq) (out *models.ApproveForAllRst, err error) {
+	var a *Art
+	a, err = ap.Get()
+	if err != nil {
+		return
+	}
+	out, err = a.ApproveForAll(req)
+	if err != nil {
+		return
+	}
+	ap.PutBack(a)
+	return
+}
+
+func (ap *ArtPool) ApproveFor(req models.ApproveForReq) (out *models.ApproveForRst, err error) {
+	var a *Art
+	a, err = ap.Get()
+	if err != nil {
+		return
+	}
+	out, err = a.ApproveFor(req)
+	if err != nil {
+		return
+	}
+	ap.PutBack(a)
+	return
+}
+
+func (ap *ArtPool) ArtRaise(req models.ArtRaiseReq) (out *models.ArtRaiseRst, err error) {
+	var a *Art
+	a, err = ap.Get()
+	if err != nil {
+		return
+	}
+	out, err = a.ArtRaise(req)
+	if err != nil {
+		return
+	}
+	ap.PutBack(a)
+	return
+}
+
+func (ap *ArtPool) NfcAdd(req models.NfcAddReq) (out *models.NfcAddRst, err error) {
+	var a *Art
+	a, err = ap.Get()
+	if err != nil {
+		return
+	}
+	out, err = a.NfcAdd(req)
+	if err != nil {
+		return
+	}
+	ap.PutBack(a)
+	return
+}
+
+func (ap *ArtPool) NfcBind(req models.NfcBindReq) (out *models.NfcBindRst, err error) {
+	var a *Art
+	a, err = ap.Get()
+	if err != nil {
+		return
+	}
+	out, err = a.NfcBind(req)
+	if err != nil {
+		return
+	}
+	ap.PutBack(a)
+	return
+}
+
 type Art struct {
 	Client    models.Client
 	IsFeeless bool
+
+	Api      *gsrpc.SubstrateAPI
+	EventApi *gsrpc.SubstrateAPI
 }
 
 func (a *Art) Feeless() *Art {
@@ -22,29 +159,43 @@ func (a *Art) Feeless() *Art {
 	return a
 }
 
-func NewArt(cli models.Client) *Art {
-	return &Art{
-		Client: cli,
+func NewArt(cli models.Client) (a *Art, err error) {
+	types.SetSerDeOptions(types.SerDeOptions{NoPalletIndices: true})
+	api, err1 := gsrpc.NewSubstrateAPI(cli.Addr)
+	if err1 != nil {
+		err = err1
+		return
 	}
+	eventApi, err1 := gsrpc.NewSubstrateAPI(cli.Addr)
+	if err1 != nil {
+		err = err1
+		return
+	}
+
+	return &Art{
+		Client:   cli,
+		Api:      api,
+		EventApi: eventApi,
+	}, nil
 }
 
 // 注册艺术品
 func (a *Art) RegisterArt(req models.RegisterArtReq) (out *models.RegisterArtRst, err error) {
 	// 创建连接
-	api, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
-	if err != nil {
-		return
-	}
-	eventApi, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
-	if err != nil {
-		return
-	}
-
+	// api, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
+	// if err != nil {
+	// 	return
+	// }
+	// eventApi, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
+	// if err != nil {
+	// 	return
+	// }
+	api, eventApi := a.Api, a.EventApi
 	meta, err := api.RPC.State.GetMetadataLatest()
 	if err != nil {
 		return
 	}
-	types.SetSerDeOptions(types.SerDeOptions{NoPalletIndices: true})
+	// types.SetSerDeOptions(types.SerDeOptions{NoPalletIndices: true})
 
 	keypair, _ := signature.KeyringPairFromSecret(a.Client.Seed, 42)
 	// 构造请求参数
@@ -215,20 +366,20 @@ forEnd:
 // 授权
 func (a *Art) ApproveForAll(req models.ApproveForAllReq) (out *models.ApproveForAllRst, err error) {
 	// 创建连接
-	api, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
-	if err != nil {
-		return
-	}
-	eventApi, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
-	if err != nil {
-		return
-	}
-
+	// api, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
+	// if err != nil {
+	// 	return
+	// }
+	// eventApi, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
+	// if err != nil {
+	// 	return
+	// }
+	api, eventApi := a.Api, a.EventApi
 	meta, err := api.RPC.State.GetMetadataLatest()
 	if err != nil {
 		return
 	}
-	types.SetSerDeOptions(types.SerDeOptions{NoPalletIndices: true})
+	// types.SetSerDeOptions(types.SerDeOptions{NoPalletIndices: true})
 
 	keypair, _ := signature.KeyringPairFromSecret(a.Client.Seed, 42)
 	// 构造请求参数
@@ -404,20 +555,20 @@ forEnd:
 // 实体授权
 func (a *Art) ApproveFor(req models.ApproveForReq) (out *models.ApproveForRst, err error) {
 	// 创建连接
-	api, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
-	if err != nil {
-		return
-	}
-	eventApi, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
-	if err != nil {
-		return
-	}
-
+	// api, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
+	// if err != nil {
+	// 	return
+	// }
+	// eventApi, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
+	// if err != nil {
+	// 	return
+	// }
+	api, eventApi := a.Api, a.EventApi
 	meta, err := api.RPC.State.GetMetadataLatest()
 	if err != nil {
 		return
 	}
-	types.SetSerDeOptions(types.SerDeOptions{NoPalletIndices: true})
+	// types.SetSerDeOptions(types.SerDeOptions{NoPalletIndices: true})
 
 	keypair, _ := signature.KeyringPairFromSecret(a.Client.Seed, 42)
 	fmt.Println("keypair.URI", keypair.URI)
@@ -588,20 +739,20 @@ forEnd:
 // 艺术品添加实物
 func (a *Art) ArtRaise(req models.ArtRaiseReq) (out *models.ArtRaiseRst, err error) {
 	// 创建连接
-	api, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
-	if err != nil {
-		return
-	}
-	eventApi, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
-	if err != nil {
-		return
-	}
-
+	// api, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
+	// if err != nil {
+	// 	return
+	// }
+	// eventApi, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
+	// if err != nil {
+	// 	return
+	// }
+	api, eventApi := a.Api, a.EventApi
 	meta, err := api.RPC.State.GetMetadataLatest()
 	if err != nil {
 		return
 	}
-	types.SetSerDeOptions(types.SerDeOptions{NoPalletIndices: true})
+	// types.SetSerDeOptions(types.SerDeOptions{NoPalletIndices: true})
 
 	keypair, _ := signature.KeyringPairFromSecret(a.Client.Seed, 42)
 	// 构造请求参数
@@ -765,20 +916,20 @@ forEnd:
 // 添加芯片
 func (a *Art) NfcAdd(req models.NfcAddReq) (out *models.NfcAddRst, err error) {
 	// 创建连接
-	api, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
-	if err != nil {
-		return
-	}
-	eventApi, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
-	if err != nil {
-		return
-	}
-
+	// api, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
+	// if err != nil {
+	// 	return
+	// }
+	// eventApi, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
+	// if err != nil {
+	// 	return
+	// }
+	api, eventApi := a.Api, a.EventApi
 	meta, err := api.RPC.State.GetMetadataLatest()
 	if err != nil {
 		return
 	}
-	types.SetSerDeOptions(types.SerDeOptions{NoPalletIndices: true})
+	// types.SetSerDeOptions(types.SerDeOptions{NoPalletIndices: true})
 
 	keypair, _ := signature.KeyringPairFromSecret(a.Client.Seed, 42)
 	// 构造请求参数
@@ -941,20 +1092,20 @@ forEnd:
 // 芯片绑定
 func (a *Art) NfcBind(req models.NfcBindReq) (out *models.NfcBindRst, err error) {
 	// 创建连接
-	api, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
-	if err != nil {
-		return
-	}
-	eventApi, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
-	if err != nil {
-		return
-	}
-
+	// api, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
+	// if err != nil {
+	// 	return
+	// }
+	// eventApi, err := gsrpc.NewSubstrateAPI(a.Client.Addr)
+	// if err != nil {
+	// 	return
+	// }
+	api, eventApi := a.Api, a.EventApi
 	meta, err := api.RPC.State.GetMetadataLatest()
 	if err != nil {
 		return
 	}
-	types.SetSerDeOptions(types.SerDeOptions{NoPalletIndices: true})
+	// types.SetSerDeOptions(types.SerDeOptions{NoPalletIndices: true})
 
 	keypair, _ := signature.KeyringPairFromSecret(a.Client.Seed, 42)
 	// 构造请求参数

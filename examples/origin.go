@@ -15,10 +15,10 @@ import (
 )
 
 // func init() {
-// 	b64 := "0x8eaf04151687736326c9fea17e25fc5287613693c912909cb226aa4794f26a48"
+// 	b64 := "0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d"
 // 	pubkey, _ := types.HexDecodeString(b64)
 // 	addr, _ := subkey.SS58Address(pubkey, 42)
-// 	fmt.Println(addr)
+// 	fmt.Println("addr", addr)
 // 	decoded := models.DecodeSS58Address(addr)
 // 	fmt.Println(pubkey)
 // 	fmt.Println(decoded)

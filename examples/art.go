@@ -12,7 +12,12 @@ func main() {
 		Addr: "ws://localhost:9944",
 		Seed: "melt draft shy egg tomorrow there below flash patient code butter blind",
 	}
-	art := handlers.NewArt(client).Feeless()
+	art, err := handlers.NewArt(client)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	art.Feeless()
 	// 授权
 	// rstApproveForAll, err := art.ApproveForAll(models.ApproveForAllReq{
 	// 	To:       "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty",
