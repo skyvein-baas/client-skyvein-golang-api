@@ -82,11 +82,11 @@ func (ap *ArtPool) ApproveForAll(req models.ApproveForAllReq) (out *models.Appro
 	if err != nil {
 		return
 	}
+	defer ap.PutBack(a)
 	out, err = a.ApproveForAll(req)
 	if err != nil {
 		return
 	}
-	ap.PutBack(a)
 	return
 }
 
@@ -96,11 +96,11 @@ func (ap *ArtPool) ApproveFor(req models.ApproveForReq) (out *models.ApproveForR
 	if err != nil {
 		return
 	}
+	defer ap.PutBack(a)
 	out, err = a.ApproveFor(req)
 	if err != nil {
 		return
 	}
-	ap.PutBack(a)
 	return
 }
 
@@ -110,11 +110,11 @@ func (ap *ArtPool) ArtRaise(req models.ArtRaiseReq) (out *models.ArtRaiseRst, er
 	if err != nil {
 		return
 	}
+	defer ap.PutBack(a)
 	out, err = a.ArtRaise(req)
 	if err != nil {
 		return
 	}
-	ap.PutBack(a)
 	return
 }
 
@@ -124,11 +124,11 @@ func (ap *ArtPool) NfcAdd(req models.NfcAddReq) (out *models.NfcAddRst, err erro
 	if err != nil {
 		return
 	}
+	defer ap.PutBack(a)
 	out, err = a.NfcAdd(req)
 	if err != nil {
 		return
 	}
-	ap.PutBack(a)
 	return
 }
 
@@ -138,11 +138,11 @@ func (ap *ArtPool) NfcBind(req models.NfcBindReq) (out *models.NfcBindRst, err e
 	if err != nil {
 		return
 	}
+	defer ap.PutBack(a)
 	out, err = a.NfcBind(req)
 	if err != nil {
 		return
 	}
-	ap.PutBack(a)
 	return
 }
 
@@ -1428,10 +1428,10 @@ func (ap *ArtPool) TransferTo(who string, amount uint64) (ok bool, err error) {
 	if err != nil {
 		return
 	}
+	defer ap.PutBack(a)
 	ok, err = a.TransferTo(who, amount)
 	if err != nil {
 		return
 	}
-	ap.PutBack(a)
 	return
 }
